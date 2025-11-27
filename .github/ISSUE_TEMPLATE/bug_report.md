@@ -17,7 +17,6 @@ Please let us know what behaviour you expected and how Crossplane diverged from
 that behaviour.
 -->
 
-
 ### How can we reproduce it?
 <!--
 Help us to reproduce your bug as succinctly and precisely as possible. Artifacts
@@ -26,7 +25,8 @@ appreciated!
 -->
 
 ### What environment did it happen in?
-Crossplane version: 
+
+Crossplane version:
 
 <!--
 Include at least the version or commit of Crossplane you were running. Consider

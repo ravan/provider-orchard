@@ -9,15 +9,19 @@ metadata:
   namespace: default
   name: example-provider-secret
 type: Opaque
-data:
-  credentials: QkFTRTY0RU5DT0RFRF9QUk9WSURFUl9DUkVEUwo=
+stringData:
+  credentials: |
+    {
+      "token": "orchard-bootstrap-token-v0.Y3Jvc3NwbGFuZS1wcm92aWRlcg.YTdkM2U1ZGUtZjU3ZS00NmY3LTgxNmUtNWZjZmRmNDgzZDMz"
+    }
 ---
-apiVersion: template.crossplane.io/v1alpha1
+apiVersion: orchard.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
-  name: example
+  name: default
   namespace: default
 spec:
+  baseURL: "http://host.docker.internal:6120/v1"
   credentials:
     source: Secret
     secretRef:
@@ -25,11 +29,12 @@ spec:
       name: example-provider-secret
       key: credentials
 ---
-apiVersion: template.crossplane.io/v1alpha1
+apiVersion: orchard.crossplane.io/v1alpha1
 kind: ClusterProviderConfig
 metadata:
-  name: example
+  name: default
 spec:
+  baseURL: "http://host.docker.internal:6120/v1"
   credentials:
     source: Secret
     secretRef:

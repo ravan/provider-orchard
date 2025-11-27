@@ -1,0 +1,707 @@
+openapi: 3.0.0
+info:
+  title: Orchard
+  description: Orchard orchestration API
+  version: 0.1.0
+paths:
+  /controller/info:
+    get:
+      summary: "Retrieve controller's information"
+      tags:
+        - controller
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControllerInfo'
+  /cluster-settings:
+    get:
+      summary: "Retrieve cluster settings"
+      tags:
+        - cluster-settings
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterSettings'
+    put:
+      summary: "Update cluster settings"
+      tags:
+        - cluster-settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClusterSettings'
+      responses:
+        '200':
+          description: Cluster settings were successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterSettings'
+  /service-accounts:
+    post:
+      summary: "Create a Service Account"
+      tags:
+        - service-accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccount'
+      responses:
+        '200':
+          description: Service Account resource was successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccount'
+        '409':
+          description: Service Account resource with with the same name already exists
+    get:
+      summary: "List Service Accounts"
+      tags:
+        - service-accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceAccount'
+  /service-accounts/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+    get:
+      summary: "Retrieve a Service Account"
+      tags:
+        - service-accounts
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccount'
+        '404':
+          description: Service Account resource with the given name doesn't exist
+    put:
+      summary: "Update a Service Account"
+      tags:
+        - service-accounts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceAccount'
+      responses:
+        '200':
+          description: Service Account object was successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAccount'
+        '404':
+          description: Service Account resource with the given name doesn't exist
+    delete:
+      summary: "Delete a Service Account"
+      tags:
+        - service-accounts
+      responses:
+        '200':
+          description: Service Account resource was successfully deleted
+        '404':
+          description: Service Account resource with the given name doesn't exist
+  /workers:
+    get:
+      summary: "List Workers"
+      tags:
+        - workers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Worker'
+  /workers/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+    get:
+      summary: "Retrieve a Worker"
+      tags:
+        - workers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Worker'
+        '404':
+          description: Worker resource with the given name doesn't exist
+    delete:
+      summary: "Delete a Worker"
+      tags:
+        - workers
+      responses:
+        '200':
+          description: Worker resource was successfully deleted
+        '404':
+          description: Worker resource with the given name doesn't exist
+  /workers/{name}/port-forward:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+    get:
+      summary: "Port-forward to a worker using WebSocket protocol"
+      tags:
+        - workers
+      parameters:
+        - in: query
+          name: port
+          description: Worker's TCP port number to connect to
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 65535
+          required: true
+        - in: query
+          name: wait
+          description: Duration in seconds for the worker to become available if it's not available already
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 65535
+            default: 10
+          required: false
+        - in: header
+          name: Connection
+          description: WebSocket protocol required header
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: Upgrade
+          description: WebSocket protocol required header
+          required: true
+          schema:
+            type: string
+      responses:
+        '400':
+          description: Invalid port specified
+        '404':
+          description: Worker resource with the given name doesn't exist
+        '503':
+          description: Failed to establish connection with the requested worker
+  /vms:
+    post:
+      summary: "Create a VM"
+      tags:
+        - vms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VMMeta'
+                - $ref: '#/components/schemas/VMSpec'
+      responses:
+        '200':
+          description: VM resource was successfully created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VM'
+        '409':
+          description: VM resource with with the same name already exists
+    get:
+      summary: "List VMs"
+      tags:
+        - vms
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VM'
+  /vms/{name}:
+    parameters:
+      - in: path
+        name: name
+        description: VM name to retrieve
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: watch
+        description: Watch for changes a VM resource and return them a stream of ADDED, MODIFIED and DELETED notifications
+        schema:
+          type: boolean
+    get:
+      summary: "Retrieve a VM"
+      tags:
+        - vms
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VM'
+            application/x-ndjson:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [ADDED, MODIFIED, DELETED]
+                  object:
+                    $ref: '#/components/schemas/VM'
+        '404':
+          description: VM resource with the given name doesn't exist
+    put:
+      summary: "Update a VM"
+      tags:
+        - vms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VMSpec'
+      responses:
+        '200':
+          description: VM object was successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VM'
+        '404':
+          description: VM resource with the given name doesn't exist
+    delete:
+      summary: "Delete a VM"
+      tags:
+        - vms
+      responses:
+        '200':
+          description: VM resource was successfully deleted
+        '404':
+          description: VM resource with the given name doesn't exist
+  /vms/{name}/events:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+    get:
+      summary: "Retrieve events for a given VM"
+      tags:
+        - vms
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Events'
+        '404':
+          description: VM resource with the given name doesn't exist
+  /vms/{name}/port-forward:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+    get:
+      summary: "Port-forward to a VM using WebSocket protocol"
+      tags:
+        - vms
+      parameters:
+        - in: query
+          name: port
+          description: VM's TCP port number to connect to
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 65535
+          required: true
+        - in: query
+          name: wait
+          description: Duration in seconds to wait for the VM to transition into "running" state if not already running.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 65535
+            default: 10
+          required: false
+        - in: header
+          name: Connection
+          description: WebSocket protocol required header
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: Upgrade
+          description: WebSocket protocol required header
+          required: true
+          schema:
+            type: string
+      responses:
+        '400':
+          description: Invalid port specified
+        '404':
+          description: VM resource with the given name doesn't exist
+        '503':
+          description: Failed to establish connection with the worker responsible for the specified VM
+  /vms/{name}/ip:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema:
+          type: string
+    get:
+      summary: "Resolve the VM's IP address on the worker"
+      tags:
+        - vms
+      parameters:
+        - in: query
+          name: wait
+          description: Duration in seconds to wait for the VM to transition into "running" state if not already running.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 65535
+            default: 0
+          required: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IP'
+        '404':
+          description: VM resource with the given name doesn't exist
+        '503':
+          description: Failed to resolve the IP address on the worker responsible for the specified VM
+components:
+  schemas:
+    Worker:
+      title: Worker node
+      type: object
+      properties:
+        name:
+          type: string
+          description: Node name
+        resources:
+          type: object
+          description: |
+            Dictionary that maps the resource name to the
+            amount of this resource provided by the worker
+            for running VMs.
+          additionalProperties:
+            type: integer
+    VM:
+      title: Virtual Machine
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/VMMeta'
+        - $ref: '#/components/schemas/VMSpec'
+        - $ref: '#/components/schemas/VMState'
+    VMMeta:
+      title: Virtual Machine Metadata
+      type: object
+      properties:
+        name:
+          type: string
+          description: VM name
+          example: macos-tahoe-base
+        generation:
+          type: number
+          description: Incremented by the controller each time a VM's specification changes
+          readOnly: true
+    VMSpec:
+      title: Virtual Machine Specification
+      type: object
+      properties:
+        image:
+          type: string
+          description: VM image for this VM
+          example: ghcr.io/cirruslabs/macos-tahoe-base:latest
+        imagePullPolicy:
+          type: string
+          description: VM image pull policy
+          default: IfNotPresent
+          enum: [IfNotPresent, Always]
+        cpu:
+          type: number
+          description: Number of CPUs assigned to this VM
+          default: 4
+        memory:
+          type: number
+          description: Amount of RAM in megabytes assigned to this VM
+          default: 8192
+        diskSize:
+          type: number
+          description: Disk size for this VM
+          example: 100
+        net-softnet:
+          type: boolean
+          description: Please use `netSoftnet` instead
+          default: false
+          deprecated: true
+        netSoftnet:
+          type: boolean
+          description: |
+            Whether to use Softnet network isolation.
+            
+            See `tart run`'s help for `--net-softnet` for more details.
+          default: false
+        netSoftnetAllow:
+          type: array
+          description: |
+            List of CIDRs to allow the traffic to when using Softnet isolation.
+            
+            See `tart run`'s help for `--net-softnet-allow` for more details.
+            
+            Enables `netSoftnet`.
+          example:
+            - "192.168.0.0/24"
+          items:
+            type: string
+        netSoftnetBlock:
+          type: array
+          description: |
+            List of CIDRs to block the traffic to when using Softnet isolation.
+            
+            See `tart run`'s help for `--net-softnet-block` for more details.
+            
+            Enables `netSoftnet`.
+          example:
+            - "66.66.0.0/16"
+          items:
+            type: string
+        suspendable:
+          type: boolean
+          description: |
+            When set, a VM will be started with an additional
+            `--suspendable` command-line argument to `tart run`,
+            which allows suspending it.
+            
+            Further generations of the VM will be `tart suspend`'ed instead of
+            `tart stopped`.
+            
+            For example, this allows you to prepare a VM with loose Softnet settings and then
+            move to the next generation by tightening the settings while preserving the VM's state.
+          default: false
+        net-bridged:
+          type: string
+          description: Whether to use bridged network mode
+          example: en0
+        headless:
+          type: boolean
+          description: Whether to run without graphics
+          default: false
+        nested:
+          type: boolean
+          description: Enable nested virtualization
+          default: false
+        username:
+          type: string
+          description: SSH username to use when connecting to a VM
+          default: admin
+        password:
+          type: string
+          description: SSH password to use when connecting to a VM
+          default: admin
+        startup_script:
+          type: object
+          description: Startup script to run after the VM boots and becomes accessible via SSH
+          properties:
+            script_content:
+              type: string
+            env:
+              type: object
+              additionalProperties:
+                type: string
+          example:
+            script_content: |
+              #!/bin/zsh
+              
+              echo $GREETING
+            env:
+              GREETING: "Hello, World!"
+        restart_policy:
+          type: string
+          description: |
+            VM restart policy: specify "Never" to never restart or "OnFailure" to only restart when the VM fails
+          default: Never
+          enum: [Never, OnFailure]
+        resources:
+          type: object
+          description: Resources required by this VM on the worker
+          additionalProperties:
+            type: integer
+          example:
+            org.cirruslabs.logical-cores: 4
+            org.cirruslabs.memory-mib: 8192
+        labels:
+          type: object
+          description: Labels required by this VM on the worker
+          additionalProperties:
+            type: string
+          example:
+            model: macstudio
+        hostDirs:
+          type: array
+          description: Directories on the Orchard Worker host to mount to a VM
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              path:
+                type: string
+              ro:
+                type: boolean
+          example:
+            - path: /path/on/host/to/sources
+              ro: true
+            - path: /path/on/host/to/builds
+    VMState:
+      title: Virtual Machine State
+      type: object
+      properties:
+        status:
+          type: string
+          description: VM status
+          enum: [ pending, running, failed ]
+        status_message:
+          type: string
+          description: VM status message
+        worker:
+          type: string
+          description: Worker on which the VM was assigned to
+        observedGeneration:
+          type: number
+          description: Corresponds to the `Generation` value on which the worker had acted upon
+    Events:
+      title: Events
+      type: object
+      items:
+        $ref: '#/components/schemas/Event'
+    IP:
+      title: Result of VM's IP resolution
+      type: object
+      properties:
+        ip:
+          type: string
+          description: The resolved IP address
+    Event:
+      title: Generic Resource Event
+      type: object
+      properties:
+        kind:
+          type: string
+          description: Kind of the event
+        payload:
+          type: string
+          description: Payload of the event
+        timestamp:
+          type: integer
+          description: Unix timestamp of the event
+    ServiceAccount:
+      title: Service Account
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name
+        token:
+          type: string
+          description: Secret token used to access the API
+        roles:
+          type: array
+          items:
+            type: string
+    ControllerInfo:
+      title: Controller's Information
+      type: object
+      properties:
+        version:
+          type: string
+          description: Version number
+        commit:
+          type: string
+          description: Commit hash
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: Supported capabilities
+    ClusterSettings:
+      title: Cluster settings
+      type: object
+      properties:
+        hostDirPolicies:
+          type: array
+          description: |
+            If not empty, allows instantiating VMs with `hostDirs` that match the policies
+            listed in this array.
+          items:
+            type: object
+            properties:
+              pathPrefix:
+                type: string
+              ro:
+                type: boolean
+          default: []
+          example:
+            - pathPrefix: /Users/ci/src
+              ro: true
+        schedulerProfile:
+          type: string
+          description: |
+            Scheduler profile to use. Possible values:
+            
+            * `optimize-utilization` — when scheduling a pending VM to a worker, pick the busiest worker
+            that can fit a VM first, falling back to less busier workers (this is the default behavior
+            when no explicit scheduler profile is set)
+            
+            * `distribute-load` — when scheduling a pending VM to a worker, pick the least occupied worker
+            that can fit a VM first, falling back to more busier workers
+          enum:
+            - optimize-utilization
+            - distribute-load
+          default: optimize-utilization

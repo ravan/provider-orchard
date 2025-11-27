@@ -1,13 +1,13 @@
 apiVersion: meta.pkg.crossplane.io/v1alpha1
 kind: Provider
 metadata:
-  name: provider-template
+  name: provider-orchard
   annotations:
-    meta.crossplane.io/maintainer: Crossplane Maintainers <info@crossplane.io>
-    meta.crossplane.io/source: github.com/crossplane/provider-template
+    meta.crossplane.io/maintainer: Ravan <ravan.naidoo@suse.com>
+    meta.crossplane.io/source: github.com/ravan/provider-orchard
     meta.crossplane.io/license: Apache-2.0
     meta.crossplane.io/description: |
-      A template that can be used to create Crossplane providers.
+      Crossplane provider for Orchard - manages Tart VMs on macOS with cloud-init style startup scripts.
 spec:
   capabilities:
     - safe-start

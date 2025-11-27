@@ -23,56 +23,59 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/providerconfig"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/provider-template/apis/v1alpha1"
+	"github.com/ravan/provider-orchard/apis/v1alpha1"
 )
 
 // Setup adds a controller that reconciles ProviderConfigs by accounting for
 // their current usage.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	if err := setupNamespacedProviderConfig(mgr, o); err != nil {
+	if err := setupProviderConfig(
+		mgr, o,
+		v1alpha1.ProviderConfigGroupKind,
+		resource.ProviderConfigKinds{
+			Config:    v1alpha1.ProviderConfigGroupVersionKind,
+			Usage:     v1alpha1.ProviderConfigUsageGroupVersionKind,
+			UsageList: v1alpha1.ProviderConfigUsageListGroupVersionKind,
+		},
+		&v1alpha1.ProviderConfig{},
+		&v1alpha1.ProviderConfigUsage{},
+	); err != nil {
 		return err
 	}
-	return setupClusterProviderConfig(mgr, o)
+
+	return setupProviderConfig(
+		mgr, o,
+		v1alpha1.ClusterProviderConfigGroupKind,
+		resource.ProviderConfigKinds{
+			Config:    v1alpha1.ClusterProviderConfigGroupVersionKind,
+			Usage:     v1alpha1.ClusterProviderConfigUsageGroupVersionKind,
+			UsageList: v1alpha1.ClusterProviderConfigUsageListGroupVersionKind,
+		},
+		&v1alpha1.ClusterProviderConfig{},
+		&v1alpha1.ClusterProviderConfigUsage{},
+	)
 }
 
-func setupNamespacedProviderConfig(mgr ctrl.Manager, o controller.Options) error {
-	name := providerconfig.ControllerName(v1alpha1.ProviderConfigGroupKind)
+func setupProviderConfig(
+	mgr ctrl.Manager,
+	o controller.Options,
+	groupKind string,
+	kinds resource.ProviderConfigKinds,
+	configObj client.Object,
+	usageObj client.Object,
+) error {
+	name := providerconfig.ControllerName(groupKind)
 
-	of := resource.ProviderConfigKinds{
-		Config:    v1alpha1.ProviderConfigGroupVersionKind,
-		Usage:     v1alpha1.ProviderConfigUsageGroupVersionKind,
-		UsageList: v1alpha1.ProviderConfigUsageListGroupVersionKind,
-	}
-
-	r := providerconfig.NewReconciler(mgr, of,
+	r := providerconfig.NewReconciler(mgr, kinds,
 		providerconfig.WithLogger(o.Logger.WithValues("controller", name)),
 		providerconfig.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
-		For(&v1alpha1.ProviderConfig{}).
-		Watches(&v1alpha1.ProviderConfigUsage{}, &resource.EnqueueRequestForProviderConfig{}).
-		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
-}
-
-func setupClusterProviderConfig(mgr ctrl.Manager, o controller.Options) error {
-	name := providerconfig.ControllerName(v1alpha1.ClusterProviderConfigGroupKind)
-	of := resource.ProviderConfigKinds{
-		Config:    v1alpha1.ClusterProviderConfigGroupVersionKind,
-		Usage:     v1alpha1.ClusterProviderConfigUsageGroupVersionKind,
-		UsageList: v1alpha1.ClusterProviderConfigUsageListGroupVersionKind,
-	}
-
-	r := providerconfig.NewReconciler(mgr, of,
-		providerconfig.WithLogger(o.Logger.WithValues("controller", name)),
-		providerconfig.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
-
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(name).
-		WithOptions(o.ForControllerRuntime()).
-		For(&v1alpha1.ClusterProviderConfig{}).
-		Watches(&v1alpha1.ClusterProviderConfigUsage{}, &resource.EnqueueRequestForProviderConfig{}).
+		For(configObj).
+		Watches(usageObj, &resource.EnqueueRequestForProviderConfig{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }

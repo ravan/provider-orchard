@@ -1,0 +1,6 @@
+package: orchardclient
+generate:
+  client: true
+  models: true
+  embedded-spec: true
+output: internal/clients/orchard/client.go

@@ -4,18 +4,18 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: mytypes.sample.template.crossplane.io
+  name: vms.compute.orchard.crossplane.io
 spec:
-  group: sample.template.crossplane.io
+  group: compute.orchard.crossplane.io
   names:
     categories:
     - crossplane
     - managed
-    - template
-    kind: MyType
-    listKind: MyTypeList
-    plural: mytypes
-    singular: mytype
+    - orchard
+    kind: VM
+    listKind: VMList
+    plural: vms
+    singular: vm
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -25,8 +25,14 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Synced')].status
       name: SYNCED
       type: string
-    - jsonPath: .metadata.annotations.crossplane\.io/external-name
-      name: EXTERNAL-NAME
+    - jsonPath: .status.atProvider.status
+      name: STATUS
+      type: string
+    - jsonPath: .status.atProvider.worker
+      name: WORKER
+      type: string
+    - jsonPath: .spec.forProvider.image
+      name: IMAGE
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
@@ -34,7 +40,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A MyType is an example API type.
+        description: A VM is a managed resource that represents an Orchard virtual
+          machine.
         properties:
           apiVersion:
             description: |-
@@ -54,15 +61,126 @@ spec:
           metadata:
             type: object
           spec:
-            description: A MyTypeSpec defines the desired state of a MyType.
+            description: A VMSpec defines the desired state of a VM.
             properties:
               forProvider:
-                description: MyTypeParameters are the configurable fields of a MyType.
+                description: VMParameters are the configurable fields of a VM.
                 properties:
-                  configurableField:
+                  cpu:
+                    description: CPU is the number of CPUs assigned to this VM
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  diskSize:
+                    description: DiskSize is the disk size for this VM in gigabytes
+                    format: int32
+                    type: integer
+                  headless:
+                    description: Headless indicates whether to run without graphics
+                    type: boolean
+                  hostDirs:
+                    description: HostDirs are directories on the Orchard Worker host
+                      to mount to a VM
+                    items:
+                      description: VMHostDir represents a host directory to mount
+                        to a VM.
+                      properties:
+                        name:
+                          description: Name of the mount
+                          type: string
+                        path:
+                          description: Path on the host
+                          type: string
+                        ro:
+                          description: Ro indicates read-only mount
+                          type: boolean
+                      type: object
+                    type: array
+                  image:
+                    description: Image is the VM image (e.g., ghcr.io/cirruslabs/macos-sonoma-vanilla:latest)
+                    type: string
+                  imagePullPolicy:
+                    description: ImagePullPolicy is the VM image pull policy (Always,
+                      IfNotPresent)
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels are labels required by this VM on the worker
+                    type: object
+                  memory:
+                    description: Memory is the amount of RAM in megabytes assigned
+                      to this VM
+                    format: int32
+                    minimum: 512
+                    type: integer
+                  nested:
+                    description: Nested enables nested virtualization
+                    type: boolean
+                  netBridged:
+                    description: NetBridged specifies whether to use bridged network
+                      mode
+                    type: string
+                  netSoftnet:
+                    description: NetSoftnet indicates whether to use Softnet network
+                      isolation
+                    type: boolean
+                  netSoftnetAllow:
+                    description: NetSoftnetAllow is a list of CIDRs to allow when
+                      using Softnet isolation
+                    items:
+                      type: string
+                    type: array
+                  netSoftnetBlock:
+                    description: NetSoftnetBlock is a list of CIDRs to block when
+                      using Softnet isolation
+                    items:
+                      type: string
+                    type: array
+                  password:
+                    description: Password is the SSH password to use when connecting
+                      to a VM
+                    type: string
+                  resources:
+                    additionalProperties:
+                      type: integer
+                    description: Resources are resources required by this VM on the
+                      worker
+                    type: object
+                  restartPolicy:
+                    description: RestartPolicy is the VM restart policy (Never, OnFailure)
+                    enum:
+                    - Never
+                    - OnFailure
+                    type: string
+                  startupScript:
+                    description: StartupScript is the startup script to run after
+                      the VM boots
+                    properties:
+                      env:
+                        additionalProperties:
+                          type: string
+                        description: Env is a map of environment variables for the
+                          script
+                        type: object
+                      scriptContent:
+                        description: ScriptContent is the shell script to run after
+                          VM boots
+                        type: string
+                    type: object
+                  suspendable:
+                    description: Suspendable allows the VM to be suspended instead
+                      of stopped
+                    type: boolean
+                  username:
+                    description: Username is the SSH username to use when connecting
+                      to a VM
                     type: string
                 required:
-                - configurableField
+                - image
                 type: object
               managementPolicies:
                 default:
@@ -123,17 +241,31 @@ spec:
             - forProvider
             type: object
           status:
-            description: A MyTypeStatus represents the observed state of a MyType.
+            description: A VMStatus represents the observed state of a VM.
             properties:
               atProvider:
-                description: MyTypeObservation are the observable fields of a MyType.
+                description: VMObservation are the observable fields of a VM.
                 properties:
-                  configurableField:
+                  generation:
+                    description: Generation is incremented by the controller each
+                      time a VM's specification changes
+                    format: int32
+                    type: integer
+                  observedGeneration:
+                    description: ObservedGeneration corresponds to the Generation
+                      value on which the worker had acted upon
+                    format: int32
+                    type: integer
+                  status:
+                    description: Status is the VM status (pending, running, failed,
+                      etc.)
                     type: string
-                  observableField:
+                  statusMessage:
+                    description: StatusMessage is the VM status message
                     type: string
-                required:
-                - configurableField
+                  worker:
+                    description: Worker is the worker on which the VM was assigned
+                    type: string
                 type: object
               conditions:
                 description: Conditions of the resource.

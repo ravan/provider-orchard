@@ -1,0 +1,12 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-orchard
+spec:
+  # For local development/testing:
+  package: localhost:5000/provider-orchard:latest
+  packagePullPolicy: Never
+
+  # For production (Docker Hub - uncomment):
+  # package: docker.io/ravan/provider-orchard:v0.1.0
+  # packagePullPolicy: IfNotPresent

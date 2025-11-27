@@ -4,19 +4,19 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.18.0
-  name: clusterproviderconfigs.template.crossplane.io
+  name: providerconfigs.orchard.crossplane.io
 spec:
-  group: template.crossplane.io
+  group: orchard.crossplane.io
   names:
     categories:
     - crossplane
     - provider
-    - template
-    kind: ClusterProviderConfig
-    listKind: ClusterProviderConfigList
-    plural: clusterproviderconfigs
-    singular: clusterproviderconfig
-  scope: Cluster
+    - orchard
+    kind: ProviderConfig
+    listKind: ProviderConfigList
+    plural: providerconfigs
+    singular: providerconfig
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .metadata.creationTimestamp
@@ -29,7 +29,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: A ClusterProviderConfig configures a Template provider.
+        description: A ProviderConfig configures a Helm 'provider', i.e. a connection
+          to a particular
         properties:
           apiVersion:
             description: |-
@@ -50,6 +51,10 @@ spec:
             type: object
           spec:
             properties:
+              baseURL:
+                default: http://localhost:6120
+                description: BaseURL is the Orchard API endpoint.
+                type: string
               credentials:
                 description: Credentials required to authenticate to this provider.
                 properties:

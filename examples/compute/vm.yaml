@@ -1,0 +1,21 @@
+apiVersion: compute.orchard.crossplane.io/v1alpha1
+kind: VM
+metadata:
+  name: example-vm
+spec:
+  forProvider:
+    image: ghcr.io/cirruslabs/macos-sonoma-vanilla:latest
+    cpu: 4
+    memory: 8192
+    diskSize: 50
+    startupScript:
+      scriptContent: |
+        #!/bin/zsh
+        echo "VM provisioned by Crossplane at $(date)"
+        echo "Hostname: $(hostname)"
+      env:
+        ENVIRONMENT: "production"
+        PROVISIONER: "crossplane"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

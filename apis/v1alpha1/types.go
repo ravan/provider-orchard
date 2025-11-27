@@ -23,6 +23,11 @@ type ProviderCredentials struct {
 type ProviderConfigSpec struct {
 	// Credentials required to authenticate to this provider.
 	Credentials ProviderCredentials `json:"credentials"`
+
+	// BaseURL is the Orchard API endpoint.
+	// +optional
+	// +kubebuilder:default="http://localhost:6120"
+	BaseURL string `json:"baseURL,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -31,7 +36,11 @@ type ProviderConfigSpec struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="SECRET-NAME",type="string",JSONPath=".spec.credentials.secretRef.name",priority=1
-// +kubebuilder:resource:scope=Namespaced,categories={crossplane,provider,template}
+// +kubebuilder:resource:scope=Namespaced,categories={crossplane,provider,orchard}
+// +kubebuilder:rbac:groups=orchard.crossplane.io,resources=providerconfigs,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=orchard.crossplane.io,resources=providerconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;update;patch;delete
 // A ProviderConfig configures a Helm 'provider', i.e. a connection to a particular
 type ProviderConfig struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -57,7 +66,8 @@ type ProviderConfigList struct {
 // +kubebuilder:printcolumn:name="CONFIG-NAME",type="string",JSONPath=".providerConfigRef.name"
 // +kubebuilder:printcolumn:name="RESOURCE-KIND",type="string",JSONPath=".resourceRef.kind"
 // +kubebuilder:printcolumn:name="RESOURCE-NAME",type="string",JSONPath=".resourceRef.name"
-// +kubebuilder:resource:scope=Namespaced,categories={crossplane,provider,template}
+// +kubebuilder:resource:scope=Namespaced,categories={crossplane,provider,orchard}
+// +kubebuilder:rbac:groups=orchard.crossplane.io,resources=providerconfigusages,verbs=get;list;watch;update;patch
 // A ProviderConfigUsage indicates that a resource is using a ProviderConfig.
 type ProviderConfigUsage struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -80,8 +90,10 @@ type ProviderConfigUsageList struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:printcolumn:name="SECRET-NAME",type="string",JSONPath=".spec.credentials.secretRef.name",priority=1
-// +kubebuilder:resource:scope=Cluster,categories={crossplane,provider,template}
-// A ClusterProviderConfig configures a Template provider.
+// +kubebuilder:resource:scope=Cluster,categories={crossplane,provider,orchard}
+// +kubebuilder:rbac:groups=orchard.crossplane.io,resources=clusterproviderconfigs,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=orchard.crossplane.io,resources=clusterproviderconfigs/status,verbs=get;update;patch
+// A ClusterProviderConfig configures a Orchard provider.
 type ClusterProviderConfig struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -106,7 +118,8 @@ type ClusterProviderConfigList struct {
 // +kubebuilder:printcolumn:name="CONFIG-NAME",type="string",JSONPath=".providerConfigRef.name"
 // +kubebuilder:printcolumn:name="RESOURCE-KIND",type="string",JSONPath=".resourceRef.kind"
 // +kubebuilder:printcolumn:name="RESOURCE-NAME",type="string",JSONPath=".resourceRef.name"
-// +kubebuilder:resource:scope=Cluster,categories={crossplane,provider,template}
+// +kubebuilder:resource:scope=Cluster,categories={crossplane,provider,orchard}
+// +kubebuilder:rbac:groups=orchard.crossplane.io,resources=clusterproviderconfigusages,verbs=get;list;watch;update;patch
 // A ClusterProviderConfigUsage indicates that a resource is using a ClusterProviderConfig.
 type ClusterProviderConfigUsage struct {
 	metav1.TypeMeta   `json:",inline"`
