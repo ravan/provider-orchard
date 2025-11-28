@@ -22,11 +22,52 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/providerconfig"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/pkg/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/ravan/provider-orchard/apis/v1alpha1"
 )
+
+// SetupGated adds ProviderConfig controllers with safe-start support.
+// Controllers are gated behind their respective Usage CRDs being established.
+func SetupGated(mgr ctrl.Manager, o controller.Options) error {
+	// Gate ProviderConfig controller behind ProviderConfigUsage CRD
+	o.Gate.Register(func() {
+		if err := setupProviderConfig(
+			mgr, o,
+			v1alpha1.ProviderConfigGroupKind,
+			resource.ProviderConfigKinds{
+				Config:    v1alpha1.ProviderConfigGroupVersionKind,
+				Usage:     v1alpha1.ProviderConfigUsageGroupVersionKind,
+				UsageList: v1alpha1.ProviderConfigUsageListGroupVersionKind,
+			},
+			&v1alpha1.ProviderConfig{},
+			&v1alpha1.ProviderConfigUsage{},
+		); err != nil {
+			panic(errors.Wrap(err, "cannot setup ProviderConfig controller"))
+		}
+	}, v1alpha1.ProviderConfigUsageGroupVersionKind)
+
+	// Gate ClusterProviderConfig controller behind ClusterProviderConfigUsage CRD
+	o.Gate.Register(func() {
+		if err := setupProviderConfig(
+			mgr, o,
+			v1alpha1.ClusterProviderConfigGroupKind,
+			resource.ProviderConfigKinds{
+				Config:    v1alpha1.ClusterProviderConfigGroupVersionKind,
+				Usage:     v1alpha1.ClusterProviderConfigUsageGroupVersionKind,
+				UsageList: v1alpha1.ClusterProviderConfigUsageListGroupVersionKind,
+			},
+			&v1alpha1.ClusterProviderConfig{},
+			&v1alpha1.ClusterProviderConfigUsage{},
+		); err != nil {
+			panic(errors.Wrap(err, "cannot setup ClusterProviderConfig controller"))
+		}
+	}, v1alpha1.ClusterProviderConfigUsageGroupVersionKind)
+
+	return nil
+}
 
 // Setup adds a controller that reconciles ProviderConfigs by accounting for
 // their current usage.

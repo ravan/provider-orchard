@@ -25,10 +25,10 @@ import (
 )
 
 // SetupGated creates all Orchard controllers with safe-start support and adds them to
-// the supplied manager.
+// the supplied manager. All controllers are gated behind their CRDs being established.
 func SetupGated(mgr ctrl.Manager, o controller.Options) error {
 	for _, setup := range []func(ctrl.Manager, controller.Options) error{
-		config.Setup,
+		config.SetupGated,
 		vm.SetupGated,
 	} {
 		if err := setup(mgr, o); err != nil {

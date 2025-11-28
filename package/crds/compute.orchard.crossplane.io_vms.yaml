@@ -28,6 +28,9 @@ spec:
     - jsonPath: .status.atProvider.status
       name: STATUS
       type: string
+    - jsonPath: .status.atProvider.ipAddress
+      name: IP
+      type: string
     - jsonPath: .status.atProvider.worker
       name: WORKER
       type: string
@@ -251,6 +254,9 @@ spec:
                       time a VM's specification changes
                     format: int32
                     type: integer
+                  ipAddress:
+                    description: IPAddress is the IP address of the VM
+                    type: string
                   observedGeneration:
                     description: ObservedGeneration corresponds to the Generation
                       value on which the worker had acted upon

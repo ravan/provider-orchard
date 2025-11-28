@@ -29,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
@@ -225,11 +226,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.Wrap(err, errGetVM)
 	}
 
-	return c.handleObserveResponse(resp, cr)
+	return c.handleObserveResponse(ctx, resp, cr, vmName)
 }
 
 // handleObserveResponse processes the API response and updates the CR status
-func (c *external) handleObserveResponse(resp *http.Response, cr *v1alpha1.VM) (managed.ExternalObservation, error) {
+func (c *external) handleObserveResponse(ctx context.Context, resp *http.Response, cr *v1alpha1.VM, vmName string) (managed.ExternalObservation, error) {
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		// VM doesn't exist
@@ -244,6 +245,19 @@ func (c *external) handleObserveResponse(resp *http.Response, cr *v1alpha1.VM) (
 
 		// Update observation fields
 		updateVMStatus(cr, &vm)
+
+		// Fetch IP address if VM is running
+		if stringValue(vm.Status) == "running" {
+			if ipResp, err := c.client.GetVmsNameIp(ctx, vmName, nil); err == nil && ipResp.StatusCode == http.StatusOK {
+				var ip orchardclient.IP
+				if err := json.NewDecoder(ipResp.Body).Decode(&ip); err == nil {
+					if ip.Ip != nil {
+						cr.Status.AtProvider.IPAddress = *ip.Ip
+					}
+				}
+				ipResp.Body.Close()
+			}
+		}
 
 		// Check if resource is up to date
 		upToDate := isVMUpToDate(&cr.Spec.ForProvider, &vm)
@@ -273,6 +287,19 @@ func updateVMStatus(cr *v1alpha1.VM, vm *orchardclient.VM) {
 	if vm.ObservedGeneration != nil {
 		obsGen := int32(*vm.ObservedGeneration)
 		cr.Status.AtProvider.ObservedGeneration = &obsGen
+	}
+
+	// Set Ready condition based on VM status
+	vmStatus := stringValue(vm.Status)
+	switch vmStatus {
+	case "running":
+		cr.SetConditions(xpv1.Available())
+	case "creating", "starting", "pending":
+		cr.SetConditions(xpv1.Creating())
+	case "stopping", "deleting":
+		cr.SetConditions(xpv1.Deleting())
+	case "failed", "error":
+		cr.SetConditions(xpv1.Unavailable())
 	}
 }
 

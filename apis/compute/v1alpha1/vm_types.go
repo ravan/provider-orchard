@@ -138,6 +138,9 @@ type VMObservation struct {
 	// Worker is the worker on which the VM was assigned
 	Worker string `json:"worker,omitempty"`
 
+	// IPAddress is the IP address of the VM
+	IPAddress string `json:"ipAddress,omitempty"`
+
 	// Generation is incremented by the controller each time a VM's specification changes
 	Generation *int32 `json:"generation,omitempty"`
 
@@ -163,6 +166,7 @@ type VMStatus struct {
 // +kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"
 // +kubebuilder:printcolumn:name="STATUS",type="string",JSONPath=".status.atProvider.status"
+// +kubebuilder:printcolumn:name="IP",type="string",JSONPath=".status.atProvider.ipAddress"
 // +kubebuilder:printcolumn:name="WORKER",type="string",JSONPath=".status.atProvider.worker"
 // +kubebuilder:printcolumn:name="IMAGE",type="string",JSONPath=".spec.forProvider.image"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
