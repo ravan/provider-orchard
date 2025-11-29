@@ -174,21 +174,25 @@ For maintainers publishing new versions to Docker Hub:
 ### Publishing Process
 
 1. Check what will be published:
+
    ```bash
    make dockerhub-dryrun
    ```
 
 2. Build and publish (version auto-detected from git tags):
+
    ```bash
    make dockerhub-publish
    ```
 
    Or specify version explicitly:
+
    ```bash
    make dockerhub-publish VERSION=v0.2.0
    ```
 
 3. Verify the published artifacts:
+
    ```bash
    # Pull container image
    docker pull docker.io/ravan/provider-orchard-arm64:v0.2.0

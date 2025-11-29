@@ -78,3 +78,8 @@ func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func (c *OrchardClient) GetBaseURL() string {
 	return c.config.BaseURL
 }
+
+// GetToken returns the configured bearer token
+func (c *OrchardClient) GetToken() string {
+	return c.config.Token
+}
