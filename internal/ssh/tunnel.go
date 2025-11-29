@@ -38,6 +38,9 @@ func dialWebSocket(ctx context.Context, config TunnelConfig) (net.Conn, error) {
 
 	// Set up headers with authentication
 	headers := http.Header{}
+	// User-Agent is required - Orchard server uses it to determine WebSocket message type.
+	// Without User-Agent, server expects MessageText but we send MessageBinary, causing data corruption.
+	headers.Set("User-Agent", "provider-orchard/1.0")
 	if config.BearerToken != "" {
 		headers.Set("Authorization", "Bearer "+config.BearerToken)
 	}

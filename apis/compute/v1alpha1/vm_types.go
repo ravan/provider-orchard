@@ -146,6 +146,15 @@ type VMObservation struct {
 
 	// ObservedGeneration corresponds to the Generation value on which the worker had acted upon
 	ObservedGeneration *int32 `json:"observedGeneration,omitempty"`
+
+	// CloudInitStatus is the status of cloud-init execution (pending, running, completed, failed)
+	// +kubebuilder:validation:Enum=pending;running;completed;failed
+	// +optional
+	CloudInitStatus string `json:"cloudInitStatus,omitempty"`
+
+	// CloudInitMessage provides additional details about cloud-init execution
+	// +optional
+	CloudInitMessage string `json:"cloudInitMessage,omitempty"`
 }
 
 // A VMSpec defines the desired state of a VM.

@@ -19,7 +19,9 @@ package vm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/meta"
@@ -40,6 +42,7 @@ import (
 	v1alpha1 "github.com/ravan/provider-orchard/apis/compute/v1alpha1"
 	apisv1alpha1 "github.com/ravan/provider-orchard/apis/v1alpha1"
 	orchardclient "github.com/ravan/provider-orchard/internal/clients/orchard"
+	"github.com/ravan/provider-orchard/internal/ssh"
 )
 
 const (
@@ -49,12 +52,24 @@ const (
 	errGetCPC       = "cannot get ClusterProviderConfig"
 	errGetCreds     = "cannot get credentials"
 
-	errNewClient  = "cannot create new Orchard client"
-	errGetVM      = "cannot get VM"
-	errCreateVM   = "cannot create VM"
-	errUpdateVM   = "cannot update VM"
-	errDeleteVM   = "cannot delete VM"
-	errParseToken = "cannot parse token from credentials"
+	errNewClient       = "cannot create new Orchard client"
+	errGetVM           = "cannot get VM"
+	errCreateVM        = "cannot create VM"
+	errUpdateVM        = "cannot update VM"
+	errDeleteVM        = "cannot delete VM"
+	errParseToken      = "cannot parse token from credentials"
+	errExecuteCloudInit = "cannot execute cloud-init script"
+	errSSHNotReady     = "SSH not ready"
+
+	// Cloud-init status values
+	CloudInitStatusPending   = "pending"
+	CloudInitStatusRunning   = "running"
+	CloudInitStatusCompleted = "completed"
+	CloudInitStatusFailed    = "failed"
+
+	// Default SSH credentials
+	DefaultSSHUsername = "admin"
+	DefaultSSHPassword = "admin"
 )
 
 // SetupGated adds a controller that reconciles VM managed resources with safe-start support.
@@ -161,7 +176,11 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewClient)
 	}
 
-	return &external{client: orchardClient}, nil
+	return &external{
+		client:  orchardClient,
+		baseURL: baseURL,
+		token:   token,
+	}, nil
 }
 
 // getProviderConfigAndBaseURL retrieves provider credentials and base URL from ProviderConfig or ClusterProviderConfig
@@ -204,7 +223,9 @@ func extractToken(data []byte) (string, error) {
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
-	client *orchardclient.OrchardClient
+	client  *orchardclient.OrchardClient
+	baseURL string // Orchard base URL for SSH tunnel
+	token   string // Bearer token for SSH tunnel
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -257,6 +278,20 @@ func (c *external) handleObserveResponse(ctx context.Context, resp *http.Respons
 				}
 				ipResp.Body.Close()
 			}
+
+			// Handle cloud-init execution if VM is running with IP
+			if cr.Status.AtProvider.IPAddress != "" {
+				if err := c.handleCloudInit(ctx, cr); err != nil {
+					// Transient error (SSH not ready) - will retry on next reconcile
+					return managed.ExternalObservation{
+						ResourceExists:   true,
+						ResourceUpToDate: true,
+					}, errors.Wrap(err, errExecuteCloudInit)
+				}
+			} else {
+				// No IP yet - stay in Creating state
+				cr.SetConditions(xpv1.Creating())
+			}
 		}
 
 		// Check if resource is up to date
@@ -290,10 +325,13 @@ func updateVMStatus(cr *v1alpha1.VM, vm *orchardclient.VM) {
 	}
 
 	// Set Ready condition based on VM status
+	// Note: "running" state is handled in handleObserveResponse after cloud-init check
 	vmStatus := stringValue(vm.Status)
 	switch vmStatus {
 	case "running":
-		cr.SetConditions(xpv1.Available())
+		// Don't set Available here - handleCloudInit will set the appropriate condition
+		// after checking/executing cloud-init scripts
+		cr.SetConditions(xpv1.Creating())
 	case "creating", "starting", "pending":
 		cr.SetConditions(xpv1.Creating())
 	case "stopping", "deleting":
@@ -317,6 +355,8 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	vmSpec := buildVMSpec(&cr.Spec.ForProvider)
 
 	// Create VM via Orchard API
+	// NOTE: StartupScript is intentionally NOT included - it causes VM crashes.
+	// Cloud-init scripts are executed via SSH after the VM is running.
 	createReq := orchardclient.PostVmsJSONRequestBody{
 		Cpu:             vmSpec.Cpu,
 		DiskSize:        vmSpec.DiskSize,
@@ -333,7 +373,6 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		NetSoftnetBlock: vmSpec.NetSoftnetBlock,
 		Password:        vmSpec.Password,
 		Resources:       vmSpec.Resources,
-		StartupScript:   vmSpec.StartupScript,
 		Suspendable:     vmSpec.Suspendable,
 		Username:        vmSpec.Username,
 	}
@@ -443,15 +482,9 @@ func buildVMSpec(params *v1alpha1.VMParameters) *orchardclient.VMSpec {
 		spec.DiskSize = &disk
 	}
 
-	if params.StartupScript != nil {
-		spec.StartupScript = &struct {
-			Env           *map[string]string `json:"env,omitempty"`
-			ScriptContent *string            `json:"script_content,omitempty"`
-		}{
-			ScriptContent: &params.StartupScript.ScriptContent,
-			Env:           &params.StartupScript.Env,
-		}
-	}
+	// NOTE: StartupScript is NOT passed to Orchard API because it causes VM crashes.
+	// Instead, cloud-init scripts are executed via SSH after the VM is running.
+	// See handleCloudInit() and executeCloudInit() for the SSH-based implementation.
 
 	spec.Username = params.Username
 	spec.Password = params.Password
@@ -536,4 +569,126 @@ func stringValue(s *orchardclient.VMStatus) string {
 		return ""
 	}
 	return string(*s)
+}
+
+// getCloudInitStatus reads the cloud-init status from CR status
+func getCloudInitStatus(cr *v1alpha1.VM) string {
+	return cr.Status.AtProvider.CloudInitStatus
+}
+
+// setCloudInitStatus updates the cloud-init status in CR status
+func setCloudInitStatus(cr *v1alpha1.VM, status, message string) {
+	cr.Status.AtProvider.CloudInitStatus = status
+	cr.Status.AtProvider.CloudInitMessage = message
+}
+
+// getSSHCredentials returns SSH username and password from spec or defaults
+func getSSHCredentials(params *v1alpha1.VMParameters) (string, string) {
+	username := DefaultSSHUsername
+	password := DefaultSSHPassword
+
+	if params.Username != nil && *params.Username != "" {
+		username = *params.Username
+	}
+	if params.Password != nil && *params.Password != "" {
+		password = *params.Password
+	}
+
+	return username, password
+}
+
+// buildTunnelConfig creates SSH tunnel configuration from CR and client
+func (c *external) buildTunnelConfig(cr *v1alpha1.VM) ssh.TunnelConfig {
+	username, password := getSSHCredentials(&cr.Spec.ForProvider)
+
+	return ssh.TunnelConfig{
+		OrchardBaseURL: c.baseURL,
+		BearerToken:    c.token,
+		VMName:         meta.GetExternalName(cr),
+		SSHUsername:    username,
+		SSHPassword:    password,
+		SSHPort:        22,
+		WaitSeconds:    30,
+		Timeout:        60 * time.Second,
+	}
+}
+
+// isSSHReady tests if SSH connection is available by running a simple command
+func (c *external) isSSHReady(ctx context.Context, cr *v1alpha1.VM) bool {
+	config := c.buildTunnelConfig(cr)
+
+	session, err := ssh.NewVMSession(ctx, config)
+	if err != nil {
+		return false
+	}
+	defer session.Close()
+
+	// Run a simple command to verify SSH works
+	result, err := session.ExecuteCommand(ctx, "ls -al")
+	return err == nil && result.ExitCode == 0
+}
+
+// handleCloudInit checks if cloud-init is needed and handles execution
+func (c *external) handleCloudInit(ctx context.Context, cr *v1alpha1.VM) error {
+	// Check if there's a startup script to execute
+	if cr.Spec.ForProvider.StartupScript == nil || cr.Spec.ForProvider.StartupScript.ScriptContent == "" {
+		// No startup script - VM is available immediately
+		cr.SetConditions(xpv1.Available())
+		return nil
+	}
+
+	// Check cloud-init status annotation
+	status := getCloudInitStatus(cr)
+
+	switch status {
+	case CloudInitStatusCompleted:
+		cr.SetConditions(xpv1.Available())
+		return nil
+	case CloudInitStatusFailed:
+		cr.SetConditions(xpv1.Unavailable())
+		return nil
+	case CloudInitStatusRunning:
+		cr.SetConditions(xpv1.Creating())
+		return nil
+	default:
+		// Empty or "pending" - execute cloud-init
+		return c.executeCloudInit(ctx, cr)
+	}
+}
+
+// executeCloudInit runs the startup script via SSH
+func (c *external) executeCloudInit(ctx context.Context, cr *v1alpha1.VM) error {
+	// Set status to running
+	setCloudInitStatus(cr, CloudInitStatusRunning, "")
+
+	// Check SSH readiness first
+	if !c.isSSHReady(ctx, cr) {
+		// SSH not ready yet - return error to retry later
+		setCloudInitStatus(cr, CloudInitStatusPending, "waiting for SSH")
+		return errors.New(errSSHNotReady)
+	}
+
+	config := c.buildTunnelConfig(cr)
+	script := cr.Spec.ForProvider.StartupScript.ScriptContent
+	env := cr.Spec.ForProvider.StartupScript.Env
+
+	// Execute the script via SSH
+	result, err := ssh.UploadAndRunScript(ctx, config, script, env)
+	if err != nil {
+		setCloudInitStatus(cr, CloudInitStatusFailed, err.Error())
+		cr.SetConditions(xpv1.Unavailable())
+		return nil // Don't return error - we've handled it by setting status
+	}
+
+	if result.ExitCode != 0 {
+		message := fmt.Sprintf("exit code %d: %s", result.ExitCode, result.Stderr)
+		setCloudInitStatus(cr, CloudInitStatusFailed, message)
+		cr.SetConditions(xpv1.Unavailable())
+		return nil // Don't return error - we've handled it by setting status
+	}
+
+	// Success
+	setCloudInitStatus(cr, CloudInitStatusCompleted, "")
+	cr.SetConditions(xpv1.Available())
+	return nil
 }

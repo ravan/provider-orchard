@@ -249,6 +249,19 @@ spec:
               atProvider:
                 description: VMObservation are the observable fields of a VM.
                 properties:
+                  cloudInitMessage:
+                    description: CloudInitMessage provides additional details about
+                      cloud-init execution
+                    type: string
+                  cloudInitStatus:
+                    description: CloudInitStatus is the status of cloud-init execution
+                      (pending, running, completed, failed)
+                    enum:
+                    - pending
+                    - running
+                    - completed
+                    - failed
+                    type: string
                   generation:
                     description: Generation is incremented by the controller each
                       time a VM's specification changes

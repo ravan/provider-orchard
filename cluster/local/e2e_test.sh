@@ -258,8 +258,8 @@ metadata:
 spec:
   forProvider:
     image: ghcr.io/cirruslabs/macos-sonoma-vanilla:latest
-    cpu: 4
-    memory: 8192
+    cpu: 2
+    memory: 4096
     diskSize: 50
   providerConfigRef:
     kind: ProviderConfig
@@ -353,6 +353,138 @@ test_vm_deletion() {
     log_info "VM deletion test passed ✓"
 }
 
+test_vm_cloud_init() {
+    log_info "Testing VM with cloud-init script..."
+
+    # Create VM with startupScript (using Ubuntu which supports cloud-init via SSH)
+    cat <<EOF | kubectl apply -f - >/dev/null
+apiVersion: compute.orchard.crossplane.io/v1alpha1
+kind: VM
+metadata:
+  name: test-vm-cloudinit
+  namespace: default
+spec:
+  forProvider:
+    image: ghcr.io/cirruslabs/ubuntu:latest
+    cpu: 2
+    memory: 4096
+    diskSize: 50
+    username: admin
+    password: admin
+    startupScript:
+      scriptContent: |
+        #!/bin/bash
+        echo "Cloud-init started at \$(date)" > /tmp/cloudinit-marker.txt
+        echo "Environment variable TEST_VAR=\$TEST_VAR" >> /tmp/cloudinit-marker.txt
+        echo "Cloud-init completed successfully"
+        exit 0
+      env:
+        TEST_VAR: "hello-from-crossplane"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+EOF
+
+    # Wait for VM to be synced first
+    log_info "Waiting for VM to be synced..."
+    local max_attempts=30
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        local synced=$(kubectl get vm test-vm-cloudinit -n default -o jsonpath='{.status.conditions[?(@.type=="Synced")].status}' 2>/dev/null || echo "")
+        if [ "$synced" = "True" ]; then
+            log_info "VM synced successfully"
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    if [ $attempt -eq $max_attempts ]; then
+        log_error "VM failed to sync within 60 seconds"
+        kubectl get vm test-vm-cloudinit -n default -o yaml
+        kubectl logs -n "$NAMESPACE" -l app=provider-orchard --tail=50
+        return 1
+    fi
+
+    # Verify VM exists in Orchard
+    if orchard list vms | grep -q "test-vm-cloudinit"; then
+        log_info "VM exists in Orchard ✓"
+    else
+        log_error "VM not found in Orchard"
+        orchard list vms
+        return 1
+    fi
+
+    # Wait for cloud-init to complete (check status field)
+    log_info "Waiting for cloud-init to complete..."
+    max_attempts=90  # Cloud-init can take a while (VM needs to boot, get IP, SSH ready)
+    attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        local cloudinit_status=$(kubectl get vm test-vm-cloudinit -n default -o jsonpath='{.status.atProvider.cloudInitStatus}' 2>/dev/null || echo "")
+        local vm_status=$(kubectl get vm test-vm-cloudinit -n default -o jsonpath='{.status.atProvider.status}' 2>/dev/null || echo "")
+
+        if [ "$cloudinit_status" = "completed" ]; then
+            log_info "Cloud-init completed successfully ✓"
+            break
+        elif [ "$cloudinit_status" = "failed" ]; then
+            local message=$(kubectl get vm test-vm-cloudinit -n default -o jsonpath='{.status.atProvider.cloudInitMessage}' 2>/dev/null || echo "unknown")
+            log_error "Cloud-init failed: $message"
+            kubectl get vm test-vm-cloudinit -n default -o yaml
+            kubectl logs -n "$NAMESPACE" -l app=provider-orchard --tail=100
+            return 1
+        elif [ "$vm_status" = "failed" ]; then
+            log_error "VM failed to start"
+            kubectl get vm test-vm-cloudinit -n default -o yaml
+            kubectl logs -n "$NAMESPACE" -l app=provider-orchard --tail=100
+            return 1
+        fi
+
+        # Show progress
+        if [ $((attempt % 10)) -eq 0 ]; then
+            local ip=$(kubectl get vm test-vm-cloudinit -n default -o jsonpath='{.status.atProvider.ipAddress}' 2>/dev/null || echo "")
+            log_info "  VM status: ${vm_status:-pending}, IP: ${ip:-pending}, cloud-init: ${cloudinit_status:-pending}"
+        fi
+
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    if [ $attempt -eq $max_attempts ]; then
+        log_error "Cloud-init did not complete within 180 seconds"
+        kubectl get vm test-vm-cloudinit -n default -o yaml
+        kubectl logs -n "$NAMESPACE" -l app=provider-orchard --tail=100
+        return 1
+    fi
+
+    # Verify VM condition is Available
+    local ready=$(kubectl get vm test-vm-cloudinit -n default -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+    if [ "$ready" = "True" ]; then
+        log_info "VM is Ready/Available ✓"
+    else
+        log_warn "VM Ready condition is not True (got: $ready)"
+    fi
+
+    # Cleanup - delete the cloud-init test VM
+    log_info "Cleaning up cloud-init test VM..."
+    kubectl delete vm test-vm-cloudinit -n default --wait=false >/dev/null
+
+    # Wait for deletion
+    max_attempts=30
+    attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if ! kubectl get vm test-vm-cloudinit -n default >/dev/null 2>&1; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    # Give orchard time to process deletion
+    sleep 5
+
+    log_info "VM cloud-init test passed ✓"
+}
+
 print_summary() {
     log_info "=================================="
     log_info "Integration Test Summary"
@@ -384,6 +516,7 @@ main() {
     test_vm_creation
     test_vm_update
     test_vm_deletion
+    test_vm_cloud_init
 
     log_info ""
     log_info "${GREEN}========================================${NC}"
