@@ -70,6 +70,9 @@ const (
 	// Default SSH credentials
 	DefaultSSHUsername = "admin"
 	DefaultSSHPassword = "admin"
+
+	// Maximum length for condition messages (for readability)
+	maxConditionMessageLen = 1024
 )
 
 // SetupGated adds a controller that reconciles VM managed resources with safe-start support.
@@ -582,6 +585,14 @@ func setCloudInitStatus(cr *v1alpha1.VM, status, message string) {
 	cr.Status.AtProvider.CloudInitMessage = message
 }
 
+// truncateMessage ensures the message fits within the condition message limit
+func truncateMessage(msg string) string {
+	if len(msg) <= maxConditionMessageLen {
+		return msg
+	}
+	return msg[:maxConditionMessageLen-3] + "..."
+}
+
 // getSSHCredentials returns SSH username and password from spec or defaults
 func getSSHCredentials(params *v1alpha1.VMParameters) (string, string) {
 	username := DefaultSSHUsername
@@ -645,7 +656,9 @@ func (c *external) handleCloudInit(ctx context.Context, cr *v1alpha1.VM) error {
 		cr.SetConditions(xpv1.Available())
 		return nil
 	case CloudInitStatusFailed:
-		cr.SetConditions(xpv1.Unavailable())
+		cond := xpv1.Unavailable()
+		cond.Message = truncateMessage(cr.Status.AtProvider.CloudInitMessage)
+		cr.SetConditions(cond)
 		return nil
 	case CloudInitStatusRunning:
 		cr.SetConditions(xpv1.Creating())
@@ -675,15 +688,20 @@ func (c *external) executeCloudInit(ctx context.Context, cr *v1alpha1.VM) error 
 	// Execute the script via SSH
 	result, err := ssh.UploadAndRunScript(ctx, config, script, env)
 	if err != nil {
-		setCloudInitStatus(cr, CloudInitStatusFailed, err.Error())
-		cr.SetConditions(xpv1.Unavailable())
+		message := fmt.Sprintf("cloud-init failed: %s", err.Error())
+		setCloudInitStatus(cr, CloudInitStatusFailed, message)
+		cond := xpv1.Unavailable()
+		cond.Message = truncateMessage(message)
+		cr.SetConditions(cond)
 		return nil // Don't return error - we've handled it by setting status
 	}
 
 	if result.ExitCode != 0 {
 		message := fmt.Sprintf("exit code %d: %s", result.ExitCode, result.Stderr)
 		setCloudInitStatus(cr, CloudInitStatusFailed, message)
-		cr.SetConditions(xpv1.Unavailable())
+		cond := xpv1.Unavailable()
+		cond.Message = truncateMessage(message)
+		cr.SetConditions(cond)
 		return nil // Don't return error - we've handled it by setting status
 	}
 
